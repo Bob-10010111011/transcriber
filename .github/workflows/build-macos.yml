@@ -1,0 +1,45 @@
+name: Build macOS app
+
+on:
+  workflow_dispatch:        # запуск вручну кнопкою на GitHub
+  push:
+    tags:
+      - "v*"                # або автоматично при тегу, напр. v1.0
+
+jobs:
+  build:
+    runs-on: macos-14       # віртуальний Мак на Apple Silicon (arm64)
+
+    steps:
+      - name: Get code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build .app
+        run: |
+          pyinstaller --windowed --noconfirm \
+            --name Transcriber \
+            --add-data "assets:assets" \
+            --collect-all faster_whisper \
+            --collect-all ctranslate2 \
+            window.py
+
+      - name: Pack .app into zip
+        run: |
+          cd dist
+          ditto -c -k --keepParent Transcriber.app Transcriber-macos-arm64.zip
+
+      - name: Upload result
+        uses: actions/upload-artifact@v4
+        with:
+          name: Transcriber-macos-arm64
+          path: dist/Transcriber-macos-arm64.zip
