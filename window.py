@@ -290,6 +290,11 @@ class MainWindow(QWidget):
 
 
 if __name__ == "__main__":
+    # Захист від повторного запуску вікна в упакованій програмі (macOS/Windows):
+    # службові процеси multiprocessing виконуються тут і завершуються, не відкриваючи вікно
+    import multiprocessing
+    multiprocessing.freeze_support()
+
     app = QApplication(sys.argv)
 
     import locale

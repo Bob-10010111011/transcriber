@@ -11,9 +11,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - runner: macos-14         # Apple Silicon (M1/M2…)
+          - runner: macos-14         # віртуальний Мак на Apple Silicon (M1/M2…)
             arch: arm64
-          - runner: macos-15-intel   # Intel (твій i9 2019)
+          - runner: macos-15-intel   # віртуальний Мак на Intel (x86_64)
             arch: x86_64
 
     runs-on: ${{ matrix.runner }}
