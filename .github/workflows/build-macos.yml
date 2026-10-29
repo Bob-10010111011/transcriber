@@ -8,7 +8,15 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14       # віртуальний Мак на Apple Silicon (arm64)
+    strategy:
+      matrix:
+        include:
+          - runner: macos-14         # Apple Silicon (M1/M2…)
+            arch: arm64
+          - runner: macos-15-intel   # Intel (твій i9 2019)
+            arch: x86_64
+
+    runs-on: ${{ matrix.runner }}
 
     steps:
       - name: Get code
@@ -36,10 +44,10 @@ jobs:
       - name: Pack .app into zip
         run: |
           cd dist
-          ditto -c -k --keepParent Transcriber.app Transcriber-macos-arm64.zip
+          ditto -c -k --keepParent Transcriber.app Transcriber-macos-${{ matrix.arch }}.zip
 
       - name: Upload result
         uses: actions/upload-artifact@v4
         with:
-          name: Transcriber-macos-arm64
-          path: dist/Transcriber-macos-arm64.zip
+          name: Transcriber-macos-${{ matrix.arch }}
+          path: dist/Transcriber-macos-${{ matrix.arch }}.zip
