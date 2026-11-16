@@ -1,12 +1,12 @@
 import sys
 from PySide6.QtWidgets import QApplication, QWidget, QPushButton, QLabel, QVBoxLayout, QFileDialog, QLineEdit, \
-    QHBoxLayout, QCheckBox, QProgressBar, QMessageBox, QGroupBox, QComboBox
+    QHBoxLayout, QCheckBox, QProgressBar, QMessageBox, QGroupBox, QComboBox, QSpinBox
 from PySide6.QtCore import QThread, Signal, QUrl, Qt
 from PySide6.QtGui import QDesktopServices
 from pathlib import Path
 
 # Імпорт ЯДРА
-from transcribe import load_model, transcribe, write_clear, write_srt
+from transcribe import load_model, transcribe, write_clear, write_srt, group_words
 
 
 
@@ -18,13 +18,14 @@ class Worker(QThread):
     done = Signal()
     
 
-    def __init__(self, video_path, out_path, write_txt:bool, write_srt:bool, language):
+    def __init__(self, video_path, out_path, write_txt:bool, write_srt:bool, language, max_words):
         super().__init__()
         self.video_path = video_path
         self.out_path = out_path
         self.write_txt = write_txt
         self.write_srt = write_srt
         self.language = language
+        self.max_words = max_words
 
     def on_progress(self, persent, text):
         self.progress.emit(int(persent))
@@ -33,11 +34,11 @@ class Worker(QThread):
     def run(self):
         try:
             model = load_model(self.on_progress)
-            segments = transcribe(model, self.video_path, self.on_progress, self.language)
+            segments, words = transcribe(model, self.video_path, self.on_progress, self.language)
             if self.write_txt:
                 write_clear(segments, self.out_path)
             if self.write_srt:
-                write_srt(segments, self.out_path)
+                write_srt(group_words(words, self.max_words), self.out_path)
             self.done.emit()
         except Exception as e:
             self.error.emit(str(e))
@@ -56,6 +57,7 @@ class MainWindow(QWidget):
 
         base = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
         bg = (base / "assets" / "wave_tile.png").as_posix()
+        check = (base / "assets" / "check.svg").as_posix()
         self.setStyleSheet(f"""
             #main {{
                 background-color: #34373c;
@@ -73,9 +75,10 @@ class MainWindow(QWidget):
             }}
             QCheckBox::indicator:checked {{
                 background: #8AE1FC;
+                image: url({check});
             }}
             QCheckBox::indicator:hover {{
-                background: #D4B8C0;
+                border: 1px solid #D4B8C0;
             }}
             QPushButton {{
                 color: #1B1718;
@@ -116,6 +119,11 @@ class MainWindow(QWidget):
         self.video_path = None
         self.directory_path = None
 
+        self.words_box = QSpinBox()
+        self.words_box.setRange(1,10)
+        self.words_box.setValue(3)
+        self.words_box.setEnabled(False)
+
         # Блок з ОГОЛОШЕННЯ
         # Написи у вікні(лейбли)
         self.label_of_file = QLabel("Тут з'явиться назва вибраного відео")
@@ -127,6 +135,8 @@ class MainWindow(QWidget):
         self.line_name_edit.setPlaceholderText('Введіть назву файлу')
         self.label_of_line = QLabel('Назва файлу (з результатом):')
         self.combox_line = QLabel('💬 Мова транскрибування:')
+        self.words_box_line = QLabel('Кількість слів для субтитрів:')
+        self.words_box_line.setEnabled(False)
 
 
         self.progress = QProgressBar()
@@ -179,6 +189,8 @@ class MainWindow(QWidget):
         group_layout1.addLayout(row4)
         row4.addWidget(self.text_checkbox)
         row4.addWidget(self.srt_checkbox)
+        row4.addWidget(self.words_box_line)
+        row4.addWidget(self.words_box)
         row4.addStretch()
         row4.addWidget(self.combox_line)
         row4.addWidget(self.combox)
@@ -205,6 +217,8 @@ class MainWindow(QWidget):
         self.choose_directory_button.clicked.connect(self.choose_directory)
         self.main_button.clicked.connect(self.transcribe_video)
         self.open_folder_button.clicked.connect(self.open_folder)
+        self.srt_checkbox.toggled.connect(self.words_box.setEnabled)
+        self.srt_checkbox.toggled.connect(self.words_box_line.setEnabled)
 
 
 
@@ -253,7 +267,7 @@ class MainWindow(QWidget):
         self.result_dir = self.directory_path
 
         path = self.directory_path/name
-        self.worker = Worker(self.video_path, path, self.text_checkbox.isChecked(), self.srt_checkbox.isChecked(), self.combox.currentData())
+        self.worker = Worker(self.video_path, path, self.text_checkbox.isChecked(), self.srt_checkbox.isChecked(), self.combox.currentData(), self.words_box.value())
         self.worker.progress.connect(self.progress.setValue)
         self.worker.step.connect(self.steps_label.setText)
         self.worker.finished.connect(self.on_finished)
@@ -279,13 +293,15 @@ class MainWindow(QWidget):
     # Блокування кнопок під час процесу
     def set_busy(self, busy):
         busy_list = [self.choose_file_button, self.choose_directory_button, self.combox,
-        self.main_button, self.text_checkbox, self.srt_checkbox, self.line_name_edit]
+        self.main_button, self.text_checkbox, self.srt_checkbox, self.line_name_edit, self.words_box, self.words_box_line]
         for widget in busy_list:
             widget.setEnabled(not busy)
 
-    # Розблокування кнопок після час
+    # Розблокування кнопок після процесу
     def on_finished(self):
         self.set_busy(False)
+        self.words_box.setEnabled(self.srt_checkbox.isChecked())
+        self.words_box_line.setEnabled(self.srt_checkbox.isChecked())
 
 
 

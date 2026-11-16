@@ -58,19 +58,52 @@ def transcribe(tr_model, tr_video, on_progress, language):
         language=language,
         beam_size=5,  # краще підбирає слова у контексті речення
         vad_filter=True,
+        word_timestamps=True,
         condition_on_previous_text=True,
         # True бо будуть видимі явні місця з пропусками, а не вигадані слова, що не відповідають відео
     )
 
     all_parts = [] # сирець для подальшої обробки
+    all_words = []
     for seg in segments:
         percent = seg.end / info.duration * 100
         text = seg.text.strip()
+        for w in seg.words:
+            word = (w.start, w.end, w.word.strip())
+            all_words.append(word)
         part = (seg.start, seg.end, text)
         all_parts.append(part)
         on_progress(percent, text)
     on_progress(100, "Розпізнано")
-    return all_parts
+    return all_parts, all_words
+
+
+def make_chunk(current):
+    start = current[0][0]  # початок першого слова
+    end = current[-1][1]  # кінець останнього слова
+    text = ' '.join(w[2] for w in current)  # склеїти тексти слів
+    return start, end, text
+
+
+def group_words(words, max_words=3, max_pause=0.5):
+    chunks = [] # готові субтитри
+    current = [] # слова субтитра, який зараз збираємо
+
+    for word in words:
+        if current and word[0] - current[-1][1] > max_pause:
+            chunks.append(make_chunk(current))
+            current = []
+
+        current.append(word)
+
+        if len(current) == max_words or current[-1][2].endswith(('!','.','?',',')):
+            chunks.append(make_chunk(current))
+            current = []
+
+    if current:
+        chunks.append(make_chunk(current))
+
+    return chunks
 
 
 def write_clear(segments, path):
@@ -111,8 +144,8 @@ if __name__ == "__main__":
         sys.exit(1)
 
     model = load_model(show_progress)
-    all_info = transcribe(model, video, show_progress, 'uk')
+    all_info, all_words = transcribe(model, video, show_progress, 'uk')
     clear_file_path = write_clear(all_info, video)
-    str_file_path = write_srt(all_info, video)
+    str_file_path = write_srt(group_words(all_words, 4), video)
     print(f"Готово:\n {clear_file_path}\n {str_file_path}")
 
